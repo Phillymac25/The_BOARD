@@ -70,6 +70,36 @@ ui <- fluidPage(
 
 # Define server logic
 server <- function(input, output, session) {
+  confirmAction <- function(id, message, action) {
+    showModal(modalDialog(
+      title = "Confirmation",
+      div(message),
+      footer = tagList(
+        actionButton(paste0("confirmYes_", id), "Yes"),
+        modalButton("No")
+      )
+    ))
+    observeEvent(input[[paste0("confirmYes_", id)]], {
+      removeModal()
+      isolate(action())
+    }, ignoreInit = TRUE, once = TRUE)
+  }
+  
+  showModal(modalDialog(
+    title = "Welcome to The Board",
+    tags$audio(src = "https://www.soundjay.com/button/beep-07.wav", type = "audio/wav", autoplay = TRUE),
+    h1("Welcome to The Board"),
+    h3("Subtitle goes here"),
+    h4("Purpose"),
+    textOutput("purposeText"),
+    h4("How to Use"),
+    textOutput("howToUseText"),
+    h4("Contact"),
+    textOutput("contactText"),
+    easyClose = TRUE,
+    footer = modalButton("Close")
+  ))
+  
   observeEvent(input$darkMode, {
     if (input$darkMode) {
       runjs("document.documentElement.setAttribute('data-theme', 'dark');")
@@ -80,46 +110,29 @@ server <- function(input, output, session) {
   
   jobs <- reactiveVal(data.frame(Title = character(), Description = character(), Contact = character(), SkillsNeeded = character(), SkillsGained = character(), TimeCommitment = character(), Status = character(), stringsAsFactors = FALSE))
   
-  confirmAction <- function(message, action) {
-    showModal(modalDialog(
-      title = "Confirmation",
-      div(message),
-      footer = tagList(
-        actionButton("confirmYes", "Yes"),
-        modalButton("No")
-      )
-    ))
-    observeEvent(input$confirmYes, {
-      removeModal()
-      isolate(action())
-    }, ignoreInit = TRUE, once = TRUE)
-  }
-  
   observeEvent(input$postJob, {
-    confirmAction("Are you sure you want to add this job?", function() {
-      newJob <- data.frame(Title = input$jobTitle, Description = input$jobDesc, Contact = input$jobContact, SkillsNeeded = input$skillsneeded, SkillsGained = input$skillsgained, TimeCommitment = input$timecommit, Status = input$jobStatus, stringsAsFactors = FALSE)
-      jobs(rbind(jobs(), newJob))
-      updateSelectInput(session, "updateJob", choices = jobs()$Title)
-      updateSelectInput(session, "removeJob", choices = jobs()$Title)
-    })
+    newJob <- data.frame(Title = input$jobTitle, Description = input$jobDesc, Contact = input$jobContact, SkillsNeeded = input$skillsneeded, SkillsGained = input$skillsgained, TimeCommitment = input$timecommit, Status = input$jobStatus, stringsAsFactors = FALSE)
+    jobs(rbind(jobs(), newJob))
+    updateSelectInput(session, "updateJob", choices = jobs()$Title)
+    updateSelectInput(session, "removeJob", choices = jobs()$Title)
   })
   
   observeEvent(input$update, {
-    confirmAction("Are you sure you want to update this job status?", function() {
-      updatedJobs <- jobs()
-      updatedJobs$Status[updatedJobs$Title == input$updateJob] <- input$updateStatus
-      jobs(updatedJobs)
-    })
+    updatedJobs <- jobs()
+    updatedJobs$Status[updatedJobs$Title == input$updateJob] <- input$updateStatus
+    jobs(updatedJobs)
   })
   
   observeEvent(input$remove, {
-    confirmAction("Are you sure you want to remove this job?", function() {
-      updatedJobs <- jobs()
-      jobs(updatedJobs[updatedJobs$Title != input$removeJob, ])
-      updateSelectInput(session, "updateJob", choices = jobs()$Title)
-      updateSelectInput(session, "removeJob", choices = jobs()$Title)
-    })
+    updatedJobs <- jobs()
+    jobs(updatedJobs[updatedJobs$Title != input$removeJob, ])
+    updateSelectInput(session, "updateJob", choices = jobs()$Title)
+    updateSelectInput(session, "removeJob", choices = jobs()$Title)
   })
+  
+  output$purposeText <- renderText({ "Enter purpose text here." })
+  output$howToUseText <- renderText({ "Enter how-to-use instructions here." })
+  output$contactText <- renderText({ "Enter contact information here." })
   
   output$jobTable <- renderDataTable({
     if (input$filterStatus == "All") {
