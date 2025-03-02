@@ -70,7 +70,9 @@ ui <- fluidPage(
 
 # Define server logic
 server <- function(input, output, session) {
-  confirmAction <- function(id, message, action) {
+  
+  # Function to confirm actions
+  confirmAction <- function(id, message) {
     showModal(modalDialog(
       title = "Confirmation",
       div(message),
@@ -79,66 +81,111 @@ server <- function(input, output, session) {
         modalButton("No")
       )
     ))
-    observeEvent(input[[paste0("confirmYes_", id)]], {
-      removeModal()
-      isolate(action())
-    }, ignoreInit = TRUE, once = TRUE)
   }
   
-  showModal(modalDialog(
-    title = "Welcome to The Board",
-    tags$audio(src = "https://www.soundjay.com/button/beep-07.wav", type = "audio/wav", autoplay = TRUE),
-    h1("Welcome to The Board"),
-    h3("Subtitle goes here"),
-    h4("Purpose"),
-    textOutput("purposeText"),
-    h4("How to Use"),
-    textOutput("howToUseText"),
-    h4("Contact"),
-    textOutput("contactText"),
-    easyClose = TRUE,
-    footer = modalButton("Close")
-  ))
+  # Reactive value for jobs
+  jobs <- reactiveVal(data.frame(Title = character(), Description = character(), Contact = character(), 
+                                 SkillsNeeded = character(), SkillsGained = character(), 
+                                 TimeCommitment = character(), Status = character(), stringsAsFactors = FALSE))
   
-  observeEvent(input$darkMode, {
-    if (input$darkMode) {
-      runjs("document.documentElement.setAttribute('data-theme', 'dark');")
+  # Function to check if all fields are filled
+  validateFields <- function() {
+    if (input$jobTitle == "" || input$jobDesc == "" || input$jobContact == "" ||
+        input$skillsneeded == "" || input$skillsgained == "" || input$timecommit == "" || input$jobStatus == "") {
+      return(FALSE)
+    }
+    return(TRUE)
+  }
+  
+  # Post Job with Confirmation
+  observeEvent(input$postJob, {
+    if (validateFields()) {
+      confirmAction("post", "Are you sure you want to add this job?")
     } else {
-      runjs("document.documentElement.removeAttribute('data-theme');")
+      showModal(modalDialog(
+        title = "Error",
+        "Please fill out all fields before posting the job.",
+        easyClose = TRUE,
+        footer = modalButton("Close")
+      ))
     }
   })
   
-  jobs <- reactiveVal(data.frame(Title = character(), Description = character(), Contact = character(), SkillsNeeded = character(), SkillsGained = character(), TimeCommitment = character(), Status = character(), stringsAsFactors = FALSE))
-  
-  observeEvent(input$postJob, {
-    newJob <- data.frame(Title = input$jobTitle, Description = input$jobDesc, Contact = input$jobContact, SkillsNeeded = input$skillsneeded, SkillsGained = input$skillsgained, TimeCommitment = input$timecommit, Status = input$jobStatus, stringsAsFactors = FALSE)
+  observeEvent(input$confirmYes_post, {
+    removeModal()
+    newJob <- data.frame(Title = input$jobTitle, Description = input$jobDesc, Contact = input$jobContact, 
+                         SkillsNeeded = input$skillsneeded, SkillsGained = input$skillsgained, 
+                         TimeCommitment = input$timecommit, Status = input$jobStatus, stringsAsFactors = FALSE)
     jobs(rbind(jobs(), newJob))
     updateSelectInput(session, "updateJob", choices = jobs()$Title)
     updateSelectInput(session, "removeJob", choices = jobs()$Title)
   })
   
+  # Update Job Status with Confirmation
   observeEvent(input$update, {
-    updatedJobs <- jobs()
-    updatedJobs$Status[updatedJobs$Title == input$updateJob] <- input$updateStatus
-    jobs(updatedJobs)
+    jobToUpdate <- input$updateJob
+    newStatus <- input$updateStatus
+    
+    if (!is.null(jobToUpdate)) {
+      confirmAction("update", paste("Are you sure you want to update the status of", jobToUpdate, "to", newStatus, "?"))
+    }
   })
   
+  observeEvent(input$confirmYes_update, {
+    removeModal()
+    jobToUpdate <- input$updateJob
+    newStatus <- input$updateStatus
+    
+    jobsData <- jobs()
+    jobsData[jobsData$Title == jobToUpdate, "Status"] <- newStatus
+    jobs(jobsData)
+  })
+  
+  # Remove Job with Confirmation
   observeEvent(input$remove, {
-    updatedJobs <- jobs()
-    jobs(updatedJobs[updatedJobs$Title != input$removeJob, ])
+    jobToRemove <- input$removeJob
+    
+    if (!is.null(jobToRemove)) {
+      confirmAction("remove", paste("Are you sure you want to remove", jobToRemove, "?"))
+    }
+  })
+  
+  observeEvent(input$confirmYes_remove, {
+    removeModal()
+    jobToRemove <- input$removeJob
+    
+    jobsData <- jobs()
+    jobsData <- jobsData[jobsData$Title != jobToRemove, ]
+    jobs(jobsData)
     updateSelectInput(session, "updateJob", choices = jobs()$Title)
     updateSelectInput(session, "removeJob", choices = jobs()$Title)
   })
   
-  output$purposeText <- renderText({ "Enter purpose text here." })
-  output$howToUseText <- renderText({ "Enter how-to-use instructions here." })
-  output$contactText <- renderText({ "Enter contact information here." })
+  # Observe and update the select inputs dynamically
+  observe({
+    updateSelectInput(session, "updateJob", choices = jobs()$Title)
+    updateSelectInput(session, "removeJob", choices = jobs()$Title)
+  })
   
+  # Display the jobs table
   output$jobTable <- renderDataTable({
+    if (nrow(jobs()) == 0) {
+      return(NULL)  # Handle the case where there are no jobs
+    }
+    
     if (input$filterStatus == "All") {
       datatable(jobs(), options = list(dom = 't', pageLength = 5))
     } else {
       datatable(jobs()[jobs()$Status == input$filterStatus, ], options = list(dom = 't', pageLength = 5))
+    }
+  })
+  
+  # Dark Mode Toggle
+  observeEvent(input$darkMode, {
+    if (input$darkMode) {
+      runjs("document.documentElement.setAttribute('data-theme', 'dark');")  # Apply dark theme
+    } else {
+      runjs("document.documentElement.removeAttribute('data-theme');")  # Remove dark theme
     }
   })
 }
