@@ -1,72 +1,62 @@
 if (!requireNamespace("shiny", quietly = TRUE)) install.packages("shiny")
 if (!requireNamespace("shinyWidgets", quietly = TRUE)) install.packages("shinyWidgets")
 if (!requireNamespace("DT", quietly = TRUE)) install.packages("DT")
-if (!requireNamespace("shinyjs", quietly = TRUE)) install.packages("shinyjs")
 
 library(shiny)
 library(shinyWidgets)
 library(DT)
-library(shinyjs)
 
 # Define UI
 ui <- fluidPage(
-  useShinyjs(),  # Enable shinyjs
   tags$head(
     tags$style(HTML(paste0(
       "body {\n",
-      "    background-color: #fff4b5;\n",  # pastel yellow background
-      "    color: #ffb6c1;\n",  # Softer pastel pink text
+      "    background-color: #0d1117;\n",
+      "    color: #39ff14;\n",
       "    font-family: 'Courier New', monospace;\n",
-      "    transition: background-color 0.5s, color 0.5s;\n",  # Smooth transition effect
-      "    margin: 0;\n",
-      "    padding: 0;\n",
-      "    overflow-x: hidden;\n",  # Prevent horizontal scrolling
-      "}\n",
-      "html, body {\n",
-      "    width: 100%;\n",
-      "    height: 100%;\n",
       "}\n",
       ".container {\n",
-      "    width: 100vw;\n",
-      "    max-width: 100%;\n",
-      "    margin: 0 auto;\n",
+      "    max-width: 800px;\n",
+      "    margin: auto;\n",
       "    padding: 20px;\n",
-      "    background-color: #fff4b5;\n",  # Matching pastel yellow
-      "    border-radius: 10px;\n",
-      "    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);\n",
-      "    transition: background-color 0.5s, color 0.5s;\n",  # Smooth transition effect
-      "    display: flex;\n",
-      "    flex-direction: column;\n",
-      "    align-items: center;\n",
-      "    justify-content: center;\n",
       "}\n",
       ".title {\n",
-      "    font-size: 80px;\n",  # Increased title size significantly
-      "    font-weight: bold;\n",
       "    text-align: center;\n",
-      "    margin-bottom: 20px;\n",
+      "    font-size: 30px;\n",
+      "    font-weight: bold;\n",
+      "    text-shadow: 2px 2px 5px #00ff00;\n",
+      "    animation: blink 1s step-start infinite;\n",
       "}\n",
-      "[data-theme='dark'] body {\n",
-      "    background-color: #000000;\n",  # Black background for dark mode
-      "    color: #39ff14;\n",  # Green text for retro terminal style
+      "@keyframes blink {\n",
+      "    50% { opacity: 0; }\n",
       "}\n",
-      "[data-theme='dark'] .container {\n",
-      "    background-color: #121212;\n",
-      "    color: #ffffff;\n",  # Updated to white text for better visibility
+      ".loading-text {\n",
+      "    font-family: 'Courier New', monospace;\n",
+      "    color: #39ff14;\n",
+      "    text-align: center;\n",
+      "    font-size: 20px;\n",
+      "    animation: typing 3s steps(30, end) infinite alternate;\n",
       "}\n",
-      "[data-theme='dark'] .title {\n",
-      "    color: #39ff14 !important;\n",  # Ensuring title is green in dark mode
+      "@keyframes typing {\n",
+      "    from { width: 0 }\n",
+      "    to { width: 100% }\n",
       "}\n",
-      "[data-theme='dark'] .dataTables_wrapper, [data-theme='dark'] .dataTable {\n",
-      "    color: #39ff14 !important;\n",  # Ensuring table text is green for visibility
-      "    background-color: #000000 !important;\n",  # Black background for contrast
-      "}\n"
-    )))
+      ".cursor {\n",
+      "    display: inline-block;\n",
+      "    width: 10px;\n",
+      "    height: 20px;\n",
+      "    background-color: #39ff14;\n",
+      "    animation: blink 0.6s step-end infinite alternate;\n",
+      "}\n",
+      ".beep-sound {\n",
+      "    display: none;\n",
+      "}"
+    ))),
+    tags$audio(id="beep", src="https://www.fesliyanstudios.com/play-mp3/4386", type="audio/mpeg", autoplay=NA)
   ),
   div(class="container",
       div(class="title", "The BOARD"),
-      br(),
-      switchInput(inputId = "darkModeSwitch", label = "Dark Mode", value = FALSE),
+      div(class="loading-text", "Loading... Please Wait<span class='cursor'></span>"),
       br(),
       selectInput("filterStatus", "Filter by Status", choices = c("All", "Open", "In Progress", "Completed")),
       dataTableOutput("jobTable"),
@@ -97,40 +87,39 @@ ui <- fluidPage(
 
 # Define server logic
 server <- function(input, output, session) {
-  jobList <- reactiveVal(data.frame(JobTitle=character(), JobDesc=character(), JobContact=character(), SkillsRequired=character(), SkillsGained=character(), EstimatedTime=character(), Status=character(), stringsAsFactors=FALSE))
+  jobCounter <- reactiveVal(1)  # Auto-increment Job ID
+  jobs <- reactiveVal(data.frame(JobID = integer(), Title = character(), Description = character(), Contact = character(), SkillsRequired = character(), SkillsGained = character(), EstimatedTime = character(), Status = character(), stringsAsFactors = FALSE))
+  previousJobs <- reactiveVal(NULL)  # Store previous state for undo
   
   observeEvent(input$postJob, {
-    newJob <- data.frame(
-      JobTitle = input$jobTitle,
-      JobDesc = input$jobDesc,
-      JobContact = input$jobContact,
-      SkillsRequired = input$skillsRequired,
-      SkillsGained = input$skillsGained,
-      EstimatedTime = input$estimatedTime,
-      Status = input$jobStatus,
-      stringsAsFactors = FALSE
-    )
-    jobList(rbind(jobList(), newJob))
-    updateSelectInput(session, "updateJob", choices = jobList()$JobTitle)
-    updateSelectInput(session, "removeJob", choices = jobList()$JobTitle)
-    updateSelectInput(session, "applyJob", choices = jobList()$JobTitle)
-  })
-  
-  output$jobTable <- renderDataTable({
-    jobs <- jobList()
-    if (input$filterStatus != "All") {
-      jobs <- jobs[jobs$Status == input$filterStatus, ]
-    }
-    datatable(jobs, options = list(dom = 't', pageLength = 5))
-  })
-  
-  observeEvent(input$darkModeSwitch, {
-    if (input$darkModeSwitch) {
-      runjs("document.body.setAttribute('data-theme', 'dark');")
+    if (input$jobDesc == "" || input$jobContact == "" || input$estimatedTime == "") {
+      showModal(modalDialog(
+        title = "Missing Information",
+        "Please fill in Job Description, Job Contact, and Estimated Time Commitment before posting.",
+        easyClose = TRUE,
+        footer = NULL
+      ))
     } else {
-      runjs("document.body.removeAttribute('data-theme');")
+      previousJobs(jobs())  # Save previous state for undo
+      newJob <- data.frame(JobID = jobCounter(), Title = input$jobTitle, Description = input$jobDesc, Contact = input$jobContact, SkillsRequired = input$skillsRequired, SkillsGained = input$skillsGained, EstimatedTime = input$estimatedTime, Status = input$jobStatus, stringsAsFactors = FALSE)
+      jobs(rbind(jobs(), newJob))
+      jobCounter(jobCounter() + 1)  # Increment Job ID
+      updateSelectInput(session, "applyJob", choices = jobs()$Title)
+      updateSelectInput(session, "updateJob", choices = jobs()$Title)
+      updateSelectInput(session, "removeJob", choices = jobs()$Title)
+      
+      runjs("document.getElementById('beep').play();")
+      showModal(modalDialog(
+        title = "Job Posted Successfully",
+        "Your job has been posted successfully!\nProceed? (Y/N)",
+        footer = tagList(
+          modalButton("No"),
+          actionButton("confirmPost", "Yes")
+        )
+      ))
     }
   })
 }
 
 shinyApp(ui, server)
+
